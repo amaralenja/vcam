@@ -16,3 +16,8 @@ _vcam_update.bat
 
 __pycache__/
 *.pyc
+
+# pastas de teste local
+_teste/
+_teste_antigo/
+_lab/
