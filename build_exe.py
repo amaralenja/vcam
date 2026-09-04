@@ -37,12 +37,20 @@ def main():
         print("  python -m pip install pyinstaller")
         return 1
 
+    version_file = write_version_info()
+
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm", "--onefile", "--windowed",
         "--name", "vcam",
         "--hidden-import", "vcam",
         "--clean",
+        # Executavel sem metadados e um dos sinais que fazem o antivirus
+        # marcar como suspeito por heuristica.
+        "--version-file", str(version_file),
+        # UPX comprime o binario e e muito usado por malware; se estiver
+        # instalado na maquina o PyInstaller usa sozinho.
+        "--noupx",
     ]
 
     if args.with_ffmpeg:
@@ -73,6 +81,48 @@ def main():
 
     write_manifest(exe, args.download_url, args.notes)
     return 0
+
+
+def write_version_info():
+    """Gera o bloco de metadados que aparece nas propriedades do arquivo."""
+    sys.path.insert(0, str(ROOT))
+    import vcam
+
+    partes = [int(p) for p in vcam.__version__.split(".")][:3]
+    while len(partes) < 4:
+        partes.append(0)
+    quad = ", ".join(str(p) for p in partes)
+
+    conteudo = '''VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=({quad}),
+    prodvers=({quad}),
+    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable('041604B0', [
+        StringStruct('CompanyName', 'amaralenja'),
+        StringStruct('FileDescription',
+                     'vcam - camera virtual para Android'),
+        StringStruct('FileVersion', '{ver}'),
+        StringStruct('InternalName', 'vcam'),
+        StringStruct('LegalCopyright',
+                     'Codigo aberto - github.com/amaralenja/vcam'),
+        StringStruct('OriginalFilename', 'vcam.exe'),
+        StringStruct('ProductName', 'vcam'),
+        StringStruct('ProductVersion', '{ver}'),
+      ])
+    ]),
+    VarFileInfo([VarStruct('Translation', [1046, 1200])])
+  ]
+)
+'''.format(quad=quad, ver=vcam.__version__)
+
+    path = ROOT / "version_info.txt"
+    path.write_text(conteudo, encoding="utf-8")
+    return path
 
 
 def write_manifest(exe, download_url, notes):
