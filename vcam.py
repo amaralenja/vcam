@@ -18,7 +18,7 @@ import zipfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 if getattr(sys, "frozen", False):
     # Empacotado: __file__ aponta para a pasta temporaria que o PyInstaller
@@ -61,7 +61,7 @@ PLATFORM_TOOLS_URL = (
     "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
 )
 
-__version__ = "1.0.9"
+__version__ = "1.1.0"
 
 # Endereco do manifesto de atualizacao (JSON). Precisa ser https.
 # Deixe vazio para desligar a atualizacao automatica.
@@ -802,6 +802,88 @@ def start_adb_server():
     exe = find_adb(required=False)
     if exe:
         run([exe, "start-server"], check=False)
+
+
+# ------------------------------------------------- instalar APK no celular
+
+# Onde pegar cada app. `prefer`: pedacos do nome do APK a priorizar quando
+# o release tem mais de um.
+APK_SOURCES = {
+    "lspatch": {
+        "label": "LSPatch",
+        "repo": "JingMatrix/LSPatch",
+        "prefer": ("manager", "release"),
+    },
+    "vcam": {
+        "label": "modulo VCAM",
+        "repo": "Cross2pro/android_VCAM-Revise",
+        "prefer": ("release",),
+    },
+}
+
+
+def github_latest_apk(repo, prefer=()):
+    """(nome, url, tamanho) do melhor APK no ultimo release do repo."""
+    url = "https://api.github.com/repos/{}/releases/latest".format(repo)
+    req = Request(url, headers={"User-Agent": "vcam",
+                                "Accept": "application/vnd.github+json"})
+    try:
+        with urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (URLError, HTTPError, OSError) as exc:
+        raise Fail("nao consegui consultar o GitHub: {}".format(exc))
+    apks = [a for a in data.get("assets", [])
+            if a["name"].lower().endswith(".apk")]
+    if not apks:
+        raise Fail("nenhum APK no ultimo release de " + repo)
+    apks.sort(key=lambda a: sum(p in a["name"].lower() for p in prefer),
+              reverse=True)
+    best = apks[0]
+    return best["name"], best["browser_download_url"], best.get("size", 0)
+
+
+def download_file(url, dest, progress=None):
+    req = Request(url, headers={"User-Agent": "vcam"})
+    try:
+        with urlopen(req, timeout=180) as resp:
+            total = int(resp.headers.get("Content-Length") or 0)
+            done = 0
+            with open(dest, "wb") as fh:
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    done += len(chunk)
+                    if progress:
+                        progress(done, total)
+    except (URLError, HTTPError, OSError) as exc:
+        dest.unlink(missing_ok=True)
+        raise Fail("falhou o download: {}".format(exc))
+    return dest
+
+
+def install_apk(path, serial):
+    # -r reinstala mantendo dados; -t aceita APK marcado como teste.
+    proc = adb(["install", "-r", "-t", str(path)], check=False, serial=serial)
+    out = ((proc.stdout or "") + (proc.stderr or "")).strip()
+    if "Success" not in out:
+        raise Fail("o celular recusou a instalacao:\n" + out[-400:])
+    return out
+
+
+def install_app_on_phone(key, serial, log=say, progress=None):
+    src = APK_SOURCES[key]
+    log("Procurando " + src["label"] + " no GitHub...")
+    name, url, size = github_latest_apk(src["repo"], src["prefer"])
+    apkdir = TOOLS / "apk"
+    apkdir.mkdir(parents=True, exist_ok=True)
+    dest = apkdir / name
+    log("Baixando " + name + " ({} KB)...".format(max(1, size // 1024)))
+    download_file(url, dest, progress=progress)
+    log("Instalando no celular...")
+    install_apk(dest, serial)
+    log("[ok] " + src["label"] + " instalado no celular.")
 
 
 # ----------------------------------------------------------------- comandos

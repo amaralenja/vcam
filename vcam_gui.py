@@ -271,7 +271,7 @@ class App:
 
     def _build_phone(self, tab):
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(5, weight=1)
+        tab.rowconfigure(6, weight=1)
 
         adb = ttk.LabelFrame(tab, text="1. Ferramenta de conexao (adb)",
                              padding=PAD)
@@ -324,8 +324,20 @@ class App:
                   foreground="#666").grid(row=2, column=0, columnspan=2,
                                           sticky="w", pady=(4, 0))
 
-        cfgf = ttk.LabelFrame(tab, text="3. Configuracao do app-alvo", padding=PAD)
-        cfgf.grid(row=3, column=0, sticky="new", pady=(0, PAD))
+        inst = ttk.LabelFrame(tab, text="3. Instalar no celular (um clique)",
+                              padding=PAD)
+        inst.grid(row=3, column=0, sticky="ew", pady=(0, PAD))
+        inst.columnconfigure(2, weight=1)
+        self._btn(inst, "Instalar LSPatch",
+                  lambda: self.do_install("lspatch"), 0, 0)
+        self._btn(inst, "Instalar modulo VCAM",
+                  lambda: self.do_install("vcam"), 0, 1)
+        ttk.Label(inst, text="baixa o APK oficial e instala no celular "
+                  "conectado", foreground="#666").grid(
+            row=0, column=2, sticky="w", padx=PAD)
+
+        cfgf = ttk.LabelFrame(tab, text="4. Configuracao do app-alvo", padding=PAD)
+        cfgf.grid(row=4, column=0, sticky="new", pady=(0, PAD))
         cfgf.columnconfigure(1, weight=1)
         ttk.Label(cfgf, text="App").grid(row=0, column=0, sticky="w")
         self.pkg_var = tk.StringVar(value=self.cfg["pkg"])
@@ -361,8 +373,8 @@ class App:
                   pack=True)
         self._btn(btns, "Limpar arquivos do celular", self.do_clean, pack=True)
 
-        upd = ttk.LabelFrame(tab, text="4. Programa", padding=PAD)
-        upd.grid(row=4, column=0, sticky="ew", pady=(0, PAD))
+        upd = ttk.LabelFrame(tab, text="5. Programa", padding=PAD)
+        upd.grid(row=5, column=0, sticky="ew", pady=(0, PAD))
         upd.columnconfigure(1, weight=1)
         self._btn(upd, "Procurar atualizacao", self.do_update, 0, 0)
         ttk.Label(upd, text="Voce esta na versao " + vcam.__version__,
@@ -716,6 +728,23 @@ class App:
             finally:
                 self.root.after(0, self.set_busy, False, "")
         threading.Thread(target=wrap, daemon=True).start()
+
+    def do_install(self, key):
+        label = vcam.APK_SOURCES[key]["label"]
+
+        def job():
+            serial = vcam.require_device(vcam.load_config())
+
+            def progress(done, total):
+                if total:
+                    self.root.after(
+                        0, self.status.configure,
+                        {"text": "Baixando {}... {}%".format(
+                            label, int(done * 100 / total))})
+            vcam.install_app_on_phone(key, serial, log=self.say,
+                                      progress=progress)
+            self.root.after(0, self.status.configure, {"text": ""})
+        self._run_bg("Instalando " + label + "...", job)
 
     def do_setup_adb(self):
         def job():
