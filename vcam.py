@@ -61,7 +61,7 @@ PLATFORM_TOOLS_URL = (
     "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
 )
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 # Endereco do manifesto de atualizacao (JSON). Precisa ser https.
 # Deixe vazio para desligar a atualizacao automatica.
@@ -657,24 +657,39 @@ def swap_and_restart(new_exe, current_exe):
     espera este processo morrer, troca os arquivos e reabre.
     """
     script = ROOT / "_vcam_update.bat"
+    # Nao precisa vigiar o PID: enquanto este processo estiver vivo, o
+    # Windows recusa o move. Basta insistir ate ele soltar o arquivo - e
+    # assim o script nao depende de tasklist nem de find, que variam
+    # conforme o PATH e o idioma do sistema.
+    #
+    # Os tres arquivos ficam na mesma pasta, entao %~dp0 dispensa caminhos
+    # completos, que quebrariam se tivessem acento.
     lines = [
         "@echo off",
-        "chcp 65001 >nul",
-        ":wait",
-        'tasklist /FI "PID eq {}" 2>nul | find "{}" >nul'.format(
-            os.getpid(), os.getpid()),
-        "if not errorlevel 1 (",
-        "  ping -n 2 127.0.0.1 >nul",
-        "  goto wait",
-        ")",
-        'move /y "{}" "{}" >nul'.format(new_exe, current_exe),
-        'if errorlevel 1 ( echo Falhou a troca do executavel. & pause & exit /b 1 )',
-        'start "" "{}"'.format(current_exe),
+        "set n=0",
+        ":retry",
+        'move /y "%~dp0{}" "%~dp0{}" >nul 2>&1'.format(
+            new_exe.name, current_exe.name),
+        "if not errorlevel 1 goto done",
+        "set /a n+=1",
+        "if %n% lss 60 ( ping -n 2 127.0.0.1 >nul & goto retry )",
+        'echo Nao consegui substituir o executavel.'
+        ' Renomeie {} para {} na mao. > "%~dp0_vcam_update.log"'.format(
+            new_exe.name, current_exe.name),
+        "exit /b 1",
+        ":done",
+        'start "" "%~dp0{}"'.format(current_exe.name),
         'del "%~f0"',
     ]
-    script.write_text("\r\n".join(lines), encoding="utf-8")
+    # newline="" impede o Windows de transformar \r\n em \r\r\n, o que faz
+    # o cmd engasgar ao ler blocos entre parenteses.
+    script.write_text("\r\n".join(lines) + "\r\n",
+                      encoding="ascii", errors="replace", newline="")
+    # CREATE_NO_WINDOW: roda sem piscar console, mas mantendo um console
+    # proprio - com DETACHED_PROCESS o cmd nao chega a executar o script.
     subprocess.Popen(["cmd", "/c", str(script)],
-                     creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                     close_fds=True)
     return script
 
 
