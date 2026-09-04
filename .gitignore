@@ -1,0 +1,18 @@
+# saida da ferramenta
+out/
+dist/
+build/
+*.spec
+
+# adb baixado pelo setup-adb
+tools/
+
+# config local do usuario
+vcam.json
+
+# temporarios da auto-atualizacao
+_vcam_update.bat
+*-novo.exe
+
+__pycache__/
+*.pyc
