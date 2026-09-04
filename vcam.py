@@ -61,7 +61,7 @@ PLATFORM_TOOLS_URL = (
     "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
 )
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 
 # Endereco do manifesto de atualizacao (JSON). Precisa ser https.
 # Deixe vazio para desligar a atualizacao automatica.

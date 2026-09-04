@@ -900,12 +900,24 @@ class App:
                            progress=progress, log=self.say)
             self.root.after(0, self.root.destroy)   # o .bat espera fechar
         except vcam.Fail as exc:
-            self.say("[x] " + str(exc))
-            self.root.after(0, self.set_busy, False, "")
+            self.root.after(0, self._update_failed, str(exc))
         except Exception as exc:
-            self.say("[x] erro inesperado: {}: {}".format(
-                type(exc).__name__, exc))
-            self.root.after(0, self.set_busy, False, "")
+            self.root.after(0, self._update_failed,
+                            "{}: {}".format(type(exc).__name__, exc))
+
+    def _update_failed(self, msg):
+        self.set_busy(False, "")
+        self.say("[x] atualizacao falhou: " + msg)
+        link = "https://github.com/amaralenja/vcam/releases/latest"
+        messagebox.showerror(
+            "Atualizacao falhou",
+            "Nao deu para atualizar automaticamente:\n\n" + msg +
+            "\n\nQuase sempre e o antivirus mexendo no arquivo baixado.\n"
+            "Baixe a versao nova na mao aqui:\n" + link)
+        try:
+            webbrowser.open(link)
+        except Exception:
+            pass
 
     def do_notoast(self):
         def job():
