@@ -61,7 +61,7 @@ PLATFORM_TOOLS_URL = (
     "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
 )
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 # Endereco do manifesto de atualizacao (JSON). Precisa ser https.
 # Deixe vazio para desligar a atualizacao automatica.
@@ -723,6 +723,35 @@ def do_update(cfg, check_only=False, progress=None, log=say):
     log("Verificado. Trocando o executavel...")
     swap_and_restart(staged, current)
     return True, manifest
+
+
+# -------------------------------------------------------------- conexao (GUI)
+
+def adb_pair(address, code):
+    """Pareia por Wi-Fi. Devolve a saida do adb."""
+    exe = find_adb()
+    proc = run([exe, "pair", address, code], check=False)
+    out = (proc.stdout or proc.stderr or "").strip()
+    if proc.returncode != 0 or "fail" in out.lower():
+        raise Fail("pareamento falhou: " + (out or "sem detalhes"))
+    return out
+
+
+def adb_connect(address):
+    """Conecta por Wi-Fi. Devolve a saida do adb."""
+    exe = find_adb()
+    proc = run([exe, "connect", address], check=False)
+    out = (proc.stdout or proc.stderr or "").strip()
+    if "cannot" in out.lower() or "fail" in out.lower():
+        raise Fail(out or "falha ao conectar")
+    return out
+
+
+def start_adb_server():
+    """Sobe o servidor do adb; util para o USB reconhecer na hora."""
+    exe = find_adb(required=False)
+    if exe:
+        run([exe, "start-server"], check=False)
 
 
 # ----------------------------------------------------------------- comandos
