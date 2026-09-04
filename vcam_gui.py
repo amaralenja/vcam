@@ -452,7 +452,7 @@ class App:
 
     def _poll_device(self):
         threading.Thread(target=self._poll_once, daemon=True).start()
-        self.root.after(4000, self._poll_device)
+        self.root.after(6000, self._poll_device)
 
     def _poll_once(self):
         try:

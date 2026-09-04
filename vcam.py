@@ -61,7 +61,7 @@ PLATFORM_TOOLS_URL = (
     "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
 )
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 
 # Endereco do manifesto de atualizacao (JSON). Precisa ser https.
 # Deixe vazio para desligar a atualizacao automatica.
@@ -135,9 +135,15 @@ def bad(msg):
     say("  [x]  " + msg)
 
 
+# No .exe empacotado em modo janela, cada subprocesso abriria e fecharia
+# uma janela de console preta. CREATE_NO_WINDOW impede esse "piscar".
+_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
+
 def run(cmd, check=True):
     proc = subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        creationflags=_NO_WINDOW,
     )
     if check and proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
