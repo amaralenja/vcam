@@ -264,7 +264,7 @@ class App:
 
     def _build_phone(self, tab):
         tab.columnconfigure(0, weight=1)
-        tab.rowconfigure(3, weight=1)
+        tab.rowconfigure(5, weight=1)
 
         adb = ttk.LabelFrame(tab, text="1. Ferramenta de conexao (adb)",
                              padding=PAD)
@@ -333,6 +333,13 @@ class App:
         self._btn(btns, "Esconder aviso de resolucao", self.do_notoast,
                   pack=True)
         self._btn(btns, "Limpar arquivos do celular", self.do_clean, pack=True)
+
+        upd = ttk.LabelFrame(tab, text="4. Programa", padding=PAD)
+        upd.grid(row=4, column=0, sticky="ew", pady=(0, PAD))
+        upd.columnconfigure(1, weight=1)
+        self._btn(upd, "Procurar atualizacao", self.do_update, 0, 0)
+        ttk.Label(upd, text="Voce esta na versao " + vcam.__version__,
+                  foreground="#666").grid(row=0, column=1, sticky="w", padx=PAD)
 
     # --------------------------------------------------------- aba tutorial
 
@@ -502,7 +509,7 @@ class App:
             found, man = vcam.do_update(cfg, check_only=True, log=lambda _="": None)
             if found:
                 self.say("[!] Versao {} disponivel (voce tem {}). Aba Celular "
-                         "nao tem botao; rode 'vcam.exe update'.".format(
+                         "> \"Procurar atualizacao\".".format(
                              man["version"], vcam.__version__))
         except Exception:
             pass
@@ -739,6 +746,64 @@ class App:
                 raise vcam.Fail("nenhum caminho aceitou o arquivo")
             self.say("Abra o app no celular e ligue a camera.")
         self._run_bg("Enviando...", job)
+
+    def do_update(self):
+        if self.busy:
+            return
+        self.set_busy(True, "Procurando atualizacao...")
+        threading.Thread(target=self._update_work, daemon=True).start()
+
+    def _update_work(self):
+        try:
+            cfg = vcam.load_config()
+            found, manifest = vcam.do_update(cfg, check_only=True,
+                                             log=self.say)
+            if found:
+                self.root.after(0, self._confirm_update, manifest)
+        except vcam.Fail as exc:
+            self.say("[x] " + str(exc))
+        except Exception as exc:
+            self.say("[x] erro inesperado: {}: {}".format(
+                type(exc).__name__, exc))
+        finally:
+            self.root.after(0, self.set_busy, False, "")
+
+    def _confirm_update(self, manifest):
+        texto = "Versao {} disponivel (voce tem {}).".format(
+            manifest["version"], vcam.__version__)
+        if manifest.get("notes"):
+            texto += "\n\nMudancas:\n" + str(manifest["notes"])
+        texto += "\n\nBaixar e instalar agora?\nO programa vai fechar e reabrir."
+        if not messagebox.askyesno("Atualizacao", texto):
+            self.say("Atualizacao adiada.")
+            return
+        if not getattr(sys, "frozen", False):
+            messagebox.showinfo(
+                "So no .exe",
+                "A atualizacao automatica so funciona no vcam.exe.\n"
+                "Rodando pelo codigo-fonte, use o git.")
+            return
+        self.set_busy(True, "Baixando...")
+        threading.Thread(target=self._apply_update, daemon=True).start()
+
+    def _apply_update(self):
+        try:
+            def progress(done, total):
+                if total:
+                    self.root.after(
+                        0, self.status.configure,
+                        {"text": "Baixando... {}%".format(
+                            int(done * 100 / total))})
+            vcam.do_update(vcam.load_config(), check_only=False,
+                           progress=progress, log=self.say)
+            self.root.after(0, self.root.destroy)   # o .bat espera fechar
+        except vcam.Fail as exc:
+            self.say("[x] " + str(exc))
+            self.root.after(0, self.set_busy, False, "")
+        except Exception as exc:
+            self.say("[x] erro inesperado: {}: {}".format(
+                type(exc).__name__, exc))
+            self.root.after(0, self.set_busy, False, "")
 
     def do_notoast(self):
         def job():
