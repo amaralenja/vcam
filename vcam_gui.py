@@ -247,6 +247,13 @@ class App:
         self._btn(act, "Gerar video", lambda: self.start(preview=False), 0, 1)
         self._btn(act, "Enviar pro celular", self.do_push, 1, 0, span=2)
 
+        self.progress = ttk.Progressbar(act, mode="determinate", maximum=100)
+        self.progress.grid(row=2, column=0, columnspan=2, sticky="ew",
+                           padx=2, pady=(6, 0))
+        self.progress.grid_remove()   # so aparece durante a conversao
+        self.prog_label = ttk.Label(act, text="", foreground="#666")
+        self.prog_label.grid(row=3, column=0, columnspan=2, sticky="w", padx=2)
+
         # direita: previa
         box = ttk.LabelFrame(tab, text="Previa", padding=PAD)
         box.grid(row=1, column=1, sticky="nsew")
@@ -618,14 +625,20 @@ class App:
             else:
                 final = vcam.OUT / vcam.VIDEO_NAME
                 stage = vcam.OUT / "_stage.mp4" if fade else final
+                # duracao esperada da saida, para calcular a porcentagem
+                total = seconds if seconds else info["duration"]
+                self.root.after(0, self._progress_show)
                 try:
-                    vcam.encode(src, stage, graph, 30, seconds=seconds)
+                    vcam.encode(src, stage, graph, 30, seconds=seconds,
+                                total=total, progress=self._on_progress)
                     if fade:
-                        self.say("Costurando o loop...")
+                        self.root.after(0, self._progress_text,
+                                        "Costurando o loop...")
                         vcam.seamless_loop(stage, final, fade)
                 finally:
                     if fade:
                         stage.unlink(missing_ok=True)
+                    self.root.after(0, self._progress_hide)
                 out = vcam.probe(final)
                 vcam.grab_frame(final, shot, at=min(1.0, out["duration"] / 2))
                 self.say("[ok] video: {}".format(final))
@@ -644,6 +657,27 @@ class App:
                 type(exc).__name__, exc))
         finally:
             self.root.after(0, self.set_busy, False, "")
+
+    def _progress_show(self):
+        self.progress.grid()
+        self.progress["value"] = 0
+        self.prog_label.configure(text="Convertendo... 0%")
+
+    def _progress_hide(self):
+        self.progress.grid_remove()
+        self.prog_label.configure(text="")
+
+    def _progress_text(self, text):
+        self.prog_label.configure(text=text)
+
+    def _on_progress(self, done, total):
+        # chamado da thread do ffmpeg; agenda a atualizacao na thread da UI
+        pct = int(done * 100 / total) if total else 0
+        self.root.after(0, self._set_progress, pct)
+
+    def _set_progress(self, pct):
+        self.progress["value"] = pct
+        self.prog_label.configure(text="Convertendo... {}%".format(pct))
 
     def _show_preview(self, path):
         try:

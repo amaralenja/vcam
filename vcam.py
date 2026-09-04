@@ -61,7 +61,7 @@ PLATFORM_TOOLS_URL = (
     "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
 )
 
-__version__ = "1.0.7"
+__version__ = "1.0.8"
 
 # Endereco do manifesto de atualizacao (JSON). Precisa ser https.
 # Deixe vazio para desligar a atualizacao automatica.
@@ -375,7 +375,51 @@ def build_filters(w, h, facing, rotate, flip,
     return ",".join(chain)
 
 
-def encode(src, dst, vf, fps, seconds=None, start=None):
+def _parse_ff_time(text):
+    """'00:01:23.45' -> 83.45 segundos."""
+    try:
+        h, m, s = text.split(":")
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    except (ValueError, AttributeError):
+        return None
+
+
+def run_ffmpeg(cmd, total=None, progress=None):
+    """Roda o ffmpeg reportando progresso.
+
+    Sem callback, e um run() comum. Com callback, usa -progress para
+    informar quantos por cento ja foram convertidos.
+    """
+    if not progress or not total:
+        return run(cmd)
+
+    full = cmd + ["-progress", "pipe:1", "-nostats"]
+    proc = subprocess.Popen(
+        full, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace",
+        creationflags=_NO_WINDOW, bufsize=1)
+    tail = []
+    for line in proc.stdout:
+        line = line.strip()
+        if line.startswith("out_time="):
+            done = _parse_ff_time(line.split("=", 1)[1])
+            if done is not None:
+                progress(min(done, total), total)
+        elif line == "progress=end":
+            progress(total, total)
+        elif line and not line.startswith(("out_time", "progress", "frame",
+                                           "fps", "bitrate", "total_size",
+                                           "speed", "dup_frames", "drop_frames",
+                                           "stream_")):
+            tail.append(line)
+            del tail[:-40]
+    proc.wait()
+    if proc.returncode not in (0, None):
+        raise Fail("ffmpeg falhou:\n" + "\n".join(tail[-8:]))
+
+
+def encode(src, dst, vf, fps, seconds=None, start=None,
+           total=None, progress=None):
     cmd = [find_ffmpeg(), "-y"]
     if start:
         cmd += ["-ss", str(start)]
@@ -394,7 +438,7 @@ def encode(src, dst, vf, fps, seconds=None, start=None):
         "-movflags", "+faststart",
         str(dst),
     ]
-    run(cmd)
+    run_ffmpeg(cmd, total=total, progress=progress)
 
 
 def seamless_loop(src, dst, fade):
