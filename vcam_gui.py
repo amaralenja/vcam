@@ -320,15 +320,35 @@ class App:
         cfgf = ttk.LabelFrame(tab, text="3. Configuracao do app-alvo", padding=PAD)
         cfgf.grid(row=3, column=0, sticky="new", pady=(0, PAD))
         cfgf.columnconfigure(1, weight=1)
-        ttk.Label(cfgf, text="App (pacote)").grid(row=0, column=0, sticky="w")
+        ttk.Label(cfgf, text="App").grid(row=0, column=0, sticky="w")
         self.pkg_var = tk.StringVar(value=self.cfg["pkg"])
-        pkgcb = ttk.Combobox(cfgf, textvariable=self.pkg_var, width=28, values=[
-            "com.discord", "org.telegram.messenger", "com.instagram.android"])
-        pkgcb.grid(row=0, column=1, sticky="w", padx=PAD)
-        ttk.Label(cfgf, text="Discord = com.discord", foreground="#666").grid(
-            row=0, column=2, sticky="w")
+        # nome amigavel -> pacote. Apps de videochamada que aceitam bem o
+        # cliente modificado.
+        self.BUILTIN_APPS = [
+            ("Discord", "com.discord"),
+            ("Telegram", "org.telegram.messenger"),
+            ("Messenger (Facebook)", "com.facebook.orca"),
+            ("Signal", "org.thoughtcrime.securesms"),
+            ("Google Meet", "com.google.android.apps.tachyon"),
+            ("Zoom", "us.zoom.videomeetings"),
+            ("Skype", "com.skype.raider"),
+            ("Snapchat", "com.snapchat.android"),
+            ("Instagram (arisco)", "com.instagram.android"),
+        ]
+        self.appname_var = tk.StringVar()
+        self.appcb = ttk.Combobox(cfgf, textvariable=self.appname_var, width=26,
+                                  state="readonly")
+        self.appcb.grid(row=0, column=1, sticky="w", padx=PAD)
+        self.appcb.bind("<<ComboboxSelected>>", self.on_app_pick)
+
+        ttk.Label(cfgf, text="ou pacote:").grid(row=1, column=0, sticky="w",
+                                                pady=(4, 0))
+        ent = ttk.Entry(cfgf, textvariable=self.pkg_var, width=30)
+        ent.grid(row=1, column=1, sticky="w", padx=PAD, pady=(4, 0))
+        self._btn(cfgf, "Salvar na lista", self.do_save_app, 1, 2)
+        self._refresh_apps()
         btns = ttk.Frame(cfgf)
-        btns.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        btns.grid(row=2, column=0, columnspan=3, sticky="w", pady=(6, 0))
         self._btn(btns, "Detectar modulo instalado", self.do_detect, pack=True)
         self._btn(btns, "Esconder aviso de resolucao", self.do_notoast,
                   pack=True)
@@ -703,6 +723,54 @@ class App:
             serial = vcam.require_device(vcam.load_config())
             self.say("[ok] conectado: " + serial)
         self._run_bg("Conectando...", job)
+
+    def _all_apps(self):
+        """Apps embutidos + os que o usuario salvou (sem duplicar pacote)."""
+        seen = {p for _, p in self.BUILTIN_APPS}
+        custom = [(n, p) for n, p in self.cfg.get("apps", [])
+                  if p not in seen and not seen.add(p)]
+        return self.BUILTIN_APPS + custom
+
+    def _refresh_apps(self):
+        apps = self._all_apps()
+        self.appcb.configure(values=[n for n, _ in apps])
+        cur = self.pkg_var.get() or self.cfg["pkg"]
+        name = next((n for n, p in apps if p == cur), None)
+        if name:
+            self.appname_var.set(name)
+        if not self.pkg_var.get():
+            self.pkg_var.set(self.cfg["pkg"])
+
+    def on_app_pick(self, _evt=None):
+        name = self.appname_var.get()
+        pkg = dict((n, p) for n, p in self._all_apps()).get(name)
+        if pkg:
+            self.pkg_var.set(pkg)
+
+    def do_save_app(self):
+        pkg = self.pkg_var.get().strip()
+        if not pkg or "." not in pkg:
+            messagebox.showinfo(
+                "Pacote invalido",
+                "Digite o pacote no formato com.exemplo.app no campo "
+                "\"ou pacote\".")
+            return
+        from tkinter import simpledialog
+        nome = simpledialog.askstring(
+            "Salvar app", "Nome para aparecer na lista:",
+            initialvalue=pkg.split(".")[-1].capitalize(), parent=self.root)
+        if not nome:
+            return
+        apps = [a for a in self.cfg.get("apps", []) if a[1] != pkg]
+        apps.append([nome, pkg])
+        self.cfg["apps"] = apps
+        cfg = vcam.load_config()
+        cfg["apps"] = apps
+        cfg["pkg"] = pkg
+        vcam.save_config(cfg)
+        self._refresh_apps()
+        self.appname_var.set(nome)
+        self.say("[ok] app salvo na lista: {} ({})".format(nome, pkg))
 
     def do_detect(self):
         def job():
