@@ -32,6 +32,26 @@ class App:
         self._build_widgets()
         self._pump_log()
         self.check_tools()
+        threading.Thread(target=self._silent_update_check, daemon=True).start()
+
+    def _silent_update_check(self):
+        """Avisa se ha versao nova, sem incomodar nem travar a abertura.
+
+        Falha em silencio: sem internet, servidor fora do ar ou atualizacao
+        nao configurada nao sao problema do usuario neste momento.
+        """
+        try:
+            cfg = vcam.load_config()
+            if not vcam.update_url(cfg):
+                return
+            found, manifest = vcam.do_update(cfg, check_only=True,
+                                             log=lambda _="": None)
+            if found:
+                self.say("[!] Versao {} disponivel (voce tem {}).".format(
+                    manifest["version"], vcam.__version__))
+                self.say("    Clique em \"Procurar atualizacao\".")
+        except Exception:
+            pass
 
     # ------------------------------------------------------------- widgets
 
